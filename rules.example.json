@@ -1,0 +1,53 @@
+{
+  "starting_money": 30000,
+  "turf_price": 30000,
+  "homeboy_prices": [
+    2000,
+    5000,
+    7000
+  ],
+  "homeboy_limits": [
+    10,
+    10,
+    10
+  ],
+  "attack_price": 1001,
+  "attack_delay": 120,
+  "attack_expiry": 600,
+  "daily_income": 1500,
+  "income_cap": 10000,
+  "income_interval": 86400,
+  "position_age": 300,
+  "sync_single_player_money": true,
+  "player_health": 100,
+  "homeboy_health": [
+    100,
+    100,
+    100
+  ],
+  "homeboy_aim": [
+    100,
+    100,
+    100
+  ],
+  "weapon_prices": {
+    "smith": 100,
+    "american_180": 100,
+    "striker": 100,
+    "spectre": 100,
+    "magnum": 100,
+    "m14": 100,
+    "ak47": 100,
+    "sawed_shotgun": 100,
+    "ithaka": 100,
+    "mp5": 100,
+    "grenade": 100,
+    "nailgun": 100,
+    "buger": 100,
+    "ingram": 100,
+    "molotov": 100,
+    "uzi": 100,
+    "deagle": 100,
+    "browning": 100
+  }
+}
