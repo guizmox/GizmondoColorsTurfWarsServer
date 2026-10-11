@@ -84,3 +84,12 @@ Les logs du conteneur affichent les commandes reçues, leur résultat et leur du
 ## Reconnexion
 
 La reconnexion du jeu patché a été vérifiée après redémarrage du jeu et du serveur : le joueur retrouve sa carte sans recréation du profil. Conserver côté PocketHLE le dossier Flash Disk et les sauvegardes. Colors stocke TWPlayerValid dans config.cfg à la racine de son dossier Flash Disk, en dehors de Save. Le lanceur desktop conserve déjà ce dossier. Voir `docs/VALIDATION.md` pour la cause du problème du banc d’essai et les limites du test.
+
+## Server-side public hosting hardening
+
+See deploy/README.md for Docker, an HTTPS reverse proxy, request limiting,
+persistent storage and consistent online backups. The wire protocol is unchanged.
+XML depth/element/attribute limits, bounded tile cache/downloads, graceful shutdown
+and SQLite busy-error handling are enforced server-side. The optional access token
+remains optional; no new client authentication is required. Public deployment
+still requires the proxy/firewall and monitoring documented there.

@@ -33,11 +33,27 @@ def transform(data: bytes, decrypt: bool = False) -> bytes:
 
 
 def parse_xml(data: bytes) -> ET.Element:
-    if len(data) > MAX_XML or b'<!DOCTYPE' in data.upper() or b'<!ENTITY' in data.upper():
+    if b'\0' in data or len(data) > MAX_XML or b'<!DOCTYPE' in data.upper() or b'<!ENTITY' in data.upper():
         raise ValueError('XML size or declarations rejected')
-    root = ET.fromstring(data)
-    if sum(1 for _ in root.iter()) > 10000:
-        raise ValueError('Too many XML elements')
+    # Check depth/count while parsing, before constructing an unbounded tree.
+    parser = ET.XMLPullParser(events=('start', 'end'))
+    depth = count = 0
+    root = None
+    for offset in range(0, len(data), 4096):
+        parser.feed(data[offset:offset+4096])
+        for event, element in parser.read_events():
+            if event == 'start':
+                depth += 1
+                count += 1
+                if root is None:
+                    root = element
+                if depth > 64 or count > 10000 or len(element.attrib) > 64:
+                    raise ValueError('XML structure exceeds limits')
+            else:
+                depth -= 1
+    parser.close()
+    if root is None:
+        raise ValueError('Empty XML')
     return root
 
 

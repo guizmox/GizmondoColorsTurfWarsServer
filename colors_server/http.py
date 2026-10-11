@@ -6,7 +6,9 @@ import hmac
 import json
 import logging
 import os
+import signal
 import socketserver
+import sqlite3
 import threading
 import time
 import urllib.parse
@@ -20,7 +22,7 @@ MAX_BODY=3*1024*1024
 ENDPOINT='/applications/games/colors/open/command.do'
 
 class BoundedHTTPServer(socketserver.ThreadingMixIn,HTTPServer):
-    daemon_threads=True
+    daemon_threads=False
     block_on_close=True
     def __init__(self,address,service,tiles,token=''):
         self.service,self.tiles,self.token=service,tiles,token
@@ -100,6 +102,9 @@ class Handler(BaseHTTPRequestHandler):
         except (OSError,TimeoutError) as exc:
             logging.warning('Map/transport request failed: %s',type(exc).__name__)
             self.error_xml('Map provider unavailable; please retry',code='MapInfoConnectionException')
+        except sqlite3.OperationalError:
+            logging.warning('Database unavailable or busy')
+            self.error_xml('Server busy; please retry',503)
         except Exception:
             logging.exception('Server command failed')
             self.error_xml('Internal server error',500)
@@ -123,7 +128,16 @@ def main():
     logging.basicConfig(level=logging.INFO,format='%(levelname)s %(message)s')
     with BoundedHTTPServer((args.host,args.port),service,tiles,os.environ.get('COLORS_ACCESS_TOKEN','')) as server:
         print(f'ColorsRebuilt listening on {args.host}:{args.port}')
-        try:server.serve_forever()
-        except KeyboardInterrupt:pass
+        # shutdown must execute outside serve_forever's thread.
+        previous = signal.getsignal(signal.SIGTERM)
+        def stop(signum, frame):
+            threading.Thread(target=server.shutdown, daemon=True).start()
+        signal.signal(signal.SIGTERM, stop)
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            signal.signal(signal.SIGTERM, previous)
 
 if __name__=='__main__':main()

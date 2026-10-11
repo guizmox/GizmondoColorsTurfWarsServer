@@ -9,6 +9,7 @@ import json
 import math
 import os
 import time
+import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -56,15 +57,47 @@ class World:
         return (self.xstep*(x-3), CELL*(y-2), self.xstep*(x+4), CELL*(y+3))
 
 class Tiles:
-    def __init__(self, world, url, cache, agent='ColorsRebuilt/0.1', fetch=None):
+    def __init__(self, world, url, cache, agent='ColorsRebuilt/0.1', fetch=None, max_cache_bytes=256*1024*1024, max_cache_files=4096):
         if not url.startswith('https://'):
             raise ValueError('Tile source must use HTTPS')
         self.world, self.url, self.agent = world, url, agent
         self.cache = Path(cache)
         self.cache.mkdir(parents=True, exist_ok=True)
+        if max_cache_bytes <= 0 or max_cache_files <= 0:
+            raise ValueError('Invalid tile cache limits')
+        self.max_cache_bytes, self.max_cache_files = max_cache_bytes, max_cache_files
+        self.lock = threading.RLock()
         self.fetch = fetch
+        self.prune_cache()
 
     def tile(self, z, x, y):
+        # Serialize cache mutations and duplicate downloads. Waiting requests do
+        # not hold gameplay transactions; HTTP concurrency is independently bounded.
+        if not self.lock.acquire(timeout=5):
+            raise TimeoutError('Tile cache busy')
+        try:
+            return self._tile(z, x, y)
+        finally:
+            self.lock.release()
+
+    def prune_cache(self):
+        entries = []
+        for path in self.cache.glob('*.png'):
+            stat = path.stat()
+            meta = path.with_suffix('.json')
+            size = stat.st_size + (meta.stat().st_size if meta.exists() else 0)
+            entries.append((stat.st_mtime, path, size))
+        total = sum(e[2] for e in entries)
+        count = len(entries)
+        for _, path, size in sorted(entries):
+            if total <= self.max_cache_bytes and count <= self.max_cache_files:
+                break
+            path.unlink(missing_ok=True)
+            path.with_suffix('.json').unlink(missing_ok=True)
+            total -= size
+            count -= 1
+
+    def _tile(self, z, x, y):
         x %= 1<<z
         if not 0 <= y < 1<<z:
             raise ValueError('Tile latitude outside coverage')
@@ -77,7 +110,10 @@ class Tiles:
             except (OSError,ValueError):cached={'expires':path.stat().st_mtime+7*86400}
             if not isinstance(cached,dict):cached={}
             if now<float(cached.get('expires',0)):
-                return Image.open(path).convert('RGB')
+                with Image.open(path) as image:
+                    if image.size != (256, 256):
+                        raise ValueError('Expected 256px raster tiles')
+                    return image.convert('RGB')
         headers={};unchanged=False
         if self.fetch:
             raw = self.fetch(url)
@@ -107,23 +143,30 @@ class Tiles:
         if 'no-store' in policy.lower() or 'no-cache' in policy.lower():expires=now
         if len(raw) > 1024*1024:
             raise ValueError('Tile exceeds size limit')
-        im = Image.open(io.BytesIO(raw)); im.load()
-        if im.size != (256,256):
-            raise ValueError('Expected 256px raster tiles')
-        im = im.convert('RGB')
+        with Image.open(io.BytesIO(raw)) as source:
+            if source.size != (256,256):
+                raise ValueError('Expected 256px raster tiles')
+            source.load()
+            im = source.convert('RGB')
         # Atomic replacement; parallel viewers never see an incomplete PNG.
         import tempfile
-        with tempfile.NamedTemporaryFile(dir=self.cache, suffix='.png', delete=False) as f:
-            temp = Path(f.name)
-            im.save(f, format='PNG')
-        os.replace(temp,path)
-        cache_info={'expires':expires,'etag':headers.get('ETag',cached.get('etag','') if unchanged else ''),
-                    'modified':headers.get('Last-Modified',cached.get('modified','') if unchanged else '')}
-        with tempfile.NamedTemporaryFile(dir=self.cache,suffix='.json',mode='w',delete=False) as f:
-            info_temp=Path(f.name);json.dump(cache_info,f)
-        os.replace(info_temp,metadata)
+        temp = info_temp = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=self.cache, suffix='.png', delete=False) as f:
+                temp = Path(f.name)
+                im.save(f, format='PNG')
+            os.replace(temp,path)
+            cache_info={'expires':expires,'etag':headers.get('ETag',cached.get('etag','') if unchanged else ''),
+                        'modified':headers.get('Last-Modified',cached.get('modified','') if unchanged else '')}
+            with tempfile.NamedTemporaryFile(dir=self.cache,suffix='.json',mode='w',delete=False) as f:
+                info_temp=Path(f.name);json.dump(cache_info,f)
+            os.replace(info_temp,metadata)
+        finally:
+            if temp is not None:temp.unlink(missing_ok=True)
+            if info_temp is not None:info_temp.unlink(missing_ok=True)
         if 'no-store' in policy.lower():
             path.unlink(missing_ok=True);metadata.unlink(missing_ok=True)
+        self.prune_cache()
         return im
 
     @staticmethod
@@ -149,8 +192,11 @@ class Tiles:
         if (tx1-tx0+1)*(ty1-ty0+1) > 16:
             raise ValueError('Map needs too many tiles; move the world origin closer')
         mosaic=Image.new('RGB',((tx1-tx0+1)*256,(ty1-ty0+1)*256))
+        deadline = time.monotonic()+30
         for ty in range(ty0,ty1+1):
             for tx in range(tx0,tx1+1):
+                if time.monotonic() >= deadline:
+                    raise TimeoutError('Map fetch deadline exceeded')
                 mosaic.paste(self.tile(z,tx,min((1<<z)-1,max(0,ty))),(256*(tx-tx0),256*(ty-ty0)))
         # Resample each row against latitude so grid boundaries and the map use
         # the same metric projection rather than a distorted Mercator crop.

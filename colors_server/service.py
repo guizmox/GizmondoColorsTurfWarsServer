@@ -276,7 +276,9 @@ class Service:
             db.execute('COMMIT')
             return result
         except Exception:
-            db.execute('ROLLBACK');raise
+            if db.in_transaction:
+                db.execute('ROLLBACK')
+            raise
         finally:db.close()
 
     def dispatch(self,db,c,r,u):
