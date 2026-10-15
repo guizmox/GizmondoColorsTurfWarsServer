@@ -93,3 +93,14 @@ XML depth/element/attribute limits, bounded tile cache/downloads, graceful shutd
 and SQLite busy-error handling are enforced server-side. The optional access token
 remains optional; no new client authentication is required. Public deployment
 still requires the proxy/firewall and monitoring documented there.
+
+
+### Correctif carte Paris / « Erreur de transfert »
+
+Les IDs de territoires envoyés à Colors sont maintenant strictement positifs :
+les coordonnées internes signées sont décalées de +1 000 000 sur chaque axe sur
+le réseau, puis reconverties pour toute commande reçue. Le client retail refuse
+les coordonnées nulles ou négatives après avoir affiché le GIF. Les degrés GPS,
+la grille, les cartes et les clés SQLite ne changent pas. Conserver la base et
+ses volumes, redéployer/redémarrer le serveur, puis rouvrir Turf Wars pour
+rafraîchir les IDs. Voir PROTOCOL.md pour le contrat et la validation.

@@ -19,6 +19,9 @@ RADIUS = 6378137.0
 CELL = 100.0
 PIXELS = 45
 WIDTH, HEIGHT = 315, 225
+# Retail Colors rejects any turf coordinate <= 0. Storage/grid coordinates stay
+# signed; this fixed reversible wire bias covers the whole supported globe.
+CLIENT_COORDINATE_BIAS = 1_000_000
 
 class World:
     def __init__(self, latitude=48.8566, longitude=2.3522):
@@ -51,6 +54,16 @@ class World:
 
     def coordinates(self, x, y):
         return [(self.wrap(x+dx),y+dy) for dy in range(-2,3) for dx in range(-3,4)]
+
+    @staticmethod
+    def client_coordinates(x, y):
+        return x + CLIENT_COORDINATE_BIAS, y + CLIENT_COORDINATE_BIAS
+
+    @staticmethod
+    def storage_coordinates(x, y):
+        if x <= 0 or y <= 0:
+            raise ValueError('Client turf coordinates must be positive')
+        return x - CLIENT_COORDINATE_BIAS, y - CLIENT_COORDINATE_BIAS
 
     def bounds(self, x, y):
         # Client consumes south-to-north rows; image itself is north-up.

@@ -83,7 +83,7 @@ class Handler(BaseHTTPRequestHandler):
             if command=='getmapview' and self.server.tiles:
                 # Network tile reads occur after the gameplay transaction closes.
                 xy=result.find('turflist/turf/coordinates').text
-                sx,sy=map(int,xy.split(','));x,y=sx+3,sy+2
+                sx,sy=self.server.service.world.storage_coordinates(*map(int,xy.split(',')));x,y=sx+3,sy+2
                 add(result,'image-data',base64.b64encode(self.server.tiles.render(x,y)).decode('ascii'))
             data=ET.tostring(result,encoding='utf-8',xml_declaration=True,short_empty_elements=False)
             if command=='getmapview' and result.find('image-data') is not None:

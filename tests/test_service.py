@@ -1,3 +1,4 @@
+import re
 import base64
 import concurrent.futures
 import contextlib
@@ -43,8 +44,20 @@ class ServiceTests(unittest.TestCase):
     def request(self,c,terminal='A',body='',attrs=''):
         root=COMMAND_ROOTS[c];self.commands.add(c)
         ident='' if c=='getganginfo' else f'<{"sendertermhwid" if c=="sendsmsmessage" else "terminalhardwareid"}>{terminal}</{"sendertermhwid" if c=="sendsmsmessage" else "terminalhardwareid"}>'
-        xml=f'<{root} {attrs}>{ident}{body}</{root}>'.encode()
+        xml=f'<{root} {attrs}>{ident}{self.client_body(c,body)}</{root}>'.encode()
         return self.s.handle(c,encode_request(xml))
+    def client_id(self,x,y):
+        return ','.join(map(str,self.world.client_coordinates(x,y)))
+    def client_body(self,command,body):
+        # Fixtures use signed storage cells. Real clients echo positive wire IDs.
+        body=re.sub(r'<(turf|id)>(-?\d+),(-?\d+)</\1>',
+            lambda m:f'<{m[1]}>{self.client_id(int(m[2]),int(m[3]))}</{m[1]}>',body)
+        if command=='setturfprice':
+            node=ET.fromstring('<r>'+body+'</r>')
+            x,y=self.world.client_coordinates(int(node.findtext('xpos')),int(node.findtext('ypos')))
+            node.find('xpos').text=str(x);node.find('ypos').text=str(y)
+            body=''.join(ET.tostring(child,encoding='unicode') for child in node)
+        return body
     def map(self,terminal='A',x=0,y=0):
         lat,lon=self.world.latlon(x*100+50,y*100+50)
         return self.request('getmapview',terminal,f'<xpos>{lon}</xpos><ypos>{lat}</ypos><metainfo>1</metainfo><map>1</map>')
@@ -60,7 +73,7 @@ class ServiceTests(unittest.TestCase):
             ids=[node.findtext('coordinates') for node in result.findall('turflist/turf')]
             self.assertEqual(len(set(ids)),35)
             x,y,*_=self.world.location(lat,lon)
-            self.assertEqual(ids[17],f'{x},{y}')
+            self.assertEqual(ids[17],self.client_id(x,y))
         self.map('A')
         with self.assertRaises(GameError):self.buy('A',self.world.columns,0)
 
@@ -106,9 +119,9 @@ class ServiceTests(unittest.TestCase):
         self.crew('A','Alpha',0,0)
         response=self.map();cells=response.findall('turflist/turf')
         self.assertEqual(len(cells),35)
-        self.assertEqual(cells[0].findtext('coordinates'),'-3,-2')
-        self.assertEqual(cells[-1].findtext('coordinates'),'3,2')
-        self.assertEqual(cells[17].findtext('coordinates'),'0,0')
+        self.assertEqual(cells[0].findtext('coordinates'),self.client_id(-3,-2))
+        self.assertEqual(cells[-1].findtext('coordinates'),self.client_id(3,2))
+        self.assertEqual(cells[17].findtext('coordinates'),self.client_id(0,0))
         self.assertTrue(0<=int(response.findtext('xoffset'))<45)
         self.assertTrue(response.findall('gangs/gang'))
     def test_atomic_rollback_and_simultaneous_purchase(self):
@@ -204,7 +217,7 @@ class ServiceTests(unittest.TestCase):
             root=COMMAND_ROOTS[c];self.commands.add(c)
             key='sendertermhwid' if c=='sendsmsmessage' else 'terminalhardwareid'
             ident='' if c=='getganginfo' else f'<{key}>{terminal}</{key}>'
-            xml=f'<{root} {attrs}>{ident}{body}</{root}>'.encode()
+            xml=f'<{root} {attrs}>{ident}{self.client_body(c,body)}</{root}>'.encode()
             encoded=urllib.parse.urlencode({'command':c,'data':encode_request(xml)}).encode()
             req=urllib.request.Request(f'http://127.0.0.1:{server.server_port}'+ENDPOINT,encoded,
                                        {'Content-Type':'application/x-www-form-urlencoded'})

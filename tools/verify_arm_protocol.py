@@ -93,7 +93,7 @@ with tempfile.TemporaryDirectory() as directory:
             request('setuserinfo',terminal,f'<colorsname>{terminal}</colorsname><money>{rules.starting_money}</money>')
             latitude,longitude=world.latlon(x*100+50,50)
             request('getmapview',terminal,f'<xpos>{longitude}</xpos><ypos>{latitude}</ypos><map>1</map><metainfo>1</metainfo>')
-            created,raw=request('creategang',terminal,f'<turf>{x},0</turf><turfname>Base {terminal}</turfname><gang><color>65536,0,32768</color><name>{terminal} crew</name><tag>HELLO</tag><password>secret</password></gang>')
+            created,raw=request('creategang',terminal,f'<turf>{world.client_coordinates(x,0)[0]},{world.client_coordinates(x,0)[1]}</turf><turfname>Base {terminal}</turfname><gang><color>65536,0,32768</color><name>{terminal} crew</name><tag>HELLO</tag><password>secret</password></gang>')
             assert int(created.findtext('user/money'))==rules.starting_money-rules.turf_price
             user,raw=request('getuserinfo',terminal)
             node=a.parse(raw);obj=a.malloc(128);assert a.call(0xf1ea0,obj,node,1,0)==1
@@ -151,7 +151,7 @@ with tempfile.TemporaryDirectory() as directory:
             assert struct.unpack('<II',a.uc.mem_read(obj+4,8))==(0,0)
             assert struct.unpack('<I',a.uc.mem_read(obj+0x850,4))[0]==2
             turf=a.call(0xe5170,obj,3,2)
-            assert struct.unpack('<ii',a.uc.mem_read(turf+0x20,8))==(x,0)
+            assert struct.unpack('<ii',a.uc.mem_read(turf+0x20,8))==world.client_coordinates(x,0)
             decode_gif(base64.b64decode(metadata.findtext('image-data')))
         print('PASS: two original ARM map callbacks, 35 territories, centre coordinates and both crews')
         if args.gif:decode_gif(Path(args.gif).read_bytes())

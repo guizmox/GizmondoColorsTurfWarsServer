@@ -217,6 +217,12 @@ class Service:
                     ('tag',gang['tag'] or gang['name']),('color',gang['color']),('password','__UNCHANGED__')]:add(node,k,v)
         return node
 
+    def client_pair(self, value):
+        try:
+            return self.world.storage_coordinates(*pair(value))
+        except ValueError as exc:
+            raise GameError('Invalid client turf coordinates; refresh the map') from exc
+
     def turf_xml(self,db,turf):
         node=ET.Element('turf')
         attack=db.execute('SELECT * FROM attacks WHERE x=? AND y=?',(turf['x'],turf['y'])).fetchone()
@@ -224,7 +230,7 @@ class Service:
         for k,v in [('name',turf['name']),('tag',turf['tag']),('gangid',turf['gang']),('price',self.rules.turf_price if not turf['gang'] and not turf['holder'] else turf['price']),
                     ('state',state),('lastcollect',wire_time(turf['lastcollect'])),
                     ('timestamp',wire_time(attack['ready'] if attack else turf['stamp'])),
-                    ('coordinates',f"{turf['x']},{turf['y']}")]:add(node,k,v)
+                    ('coordinates',','.join(map(str,self.world.client_coordinates(turf['x'],turf['y']))))]:add(node,k,v)
         boys=ET.SubElement(node,'homeboys')
         for level in (1,2,3):
             boy=ET.SubElement(boys,'homeboy');add(boy,'type',level);add(boy,'value',turf['hb'+str(level)])
@@ -359,7 +365,7 @@ class Service:
             db.executemany('UPDATE messages SET delivered=1 WHERE id=?',[(msg['id'],) for msg in messages])
             return out
         if c=='organizehomeboys':return self.organize(db,c,r,u)
-        xy=pair(text(r,'turf')) if c!='setturfprice' else (number(r,'xpos',minimum=-10000000),number(r,'ypos',minimum=-10000000))
+        xy=self.client_pair(text(r,'turf')) if c!='setturfprice' else self.client_pair(f"{number(r,'xpos',minimum=1)},{number(r,'ypos',minimum=1)}")
         self.nearby(u,xy);turf=self.turf(db,xy)
         if c=='attackturf':return self.attack(db,c,r,u,xy,turf)
         self.unlocked(db,xy)
@@ -497,7 +503,7 @@ class Service:
     def organize(self,db,c,r,u):
         self.get_gang(db,u);changes={};totals=[0,0,0]
         for node in r.findall('turf'):
-            xy=pair(text(node,'id'));turf=self.turf(db,xy)
+            xy=self.client_pair(text(node,'id'));turf=self.turf(db,xy)
             self.nearby_map(u,xy);self.owned(u,turf);self.unlocked(db,xy)
             changes.setdefault(xy,[0,0,0])
             for boy in node.findall('homeboys'):

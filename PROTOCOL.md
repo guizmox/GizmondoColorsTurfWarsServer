@@ -97,3 +97,30 @@ La grille du remplacement a une origine fixe, des longitudes périodiques et des
 Les scripts exécutent ces fonctions originales sous Unicorn. Ils remplacent les imports CRT nécessaires, injectent la réponse HTTP déjà reçue dans le callback carte et neutralisent la création GPU. Les analyses XML, crews, turfs, variables, GIF et l’encodage des requêtes restent des instructions originales. Ces preuves ne démontrent pas une partie complète dans le lanceur.
 
 Le contenu Base64 de `<image-data>` doit être placé dans CDATA : le callback du jeu accède directement au stockage de ce nœud enfant. Un simple texte XML provoque un accès nul, même si un parseur XML standard accepte la réponse.
+
+
+## Positive client turf coordinates (Paris transfer fix)
+
+Retail Colors rejects a territory if either integer in `coordinates` is zero or
+negative. The supplied retail variant's original ARM parser at 0xf2704 checks
+both values with strict `> 0`; the metadata callback fails after displaying the
+GIF. The former signed IDs reproduced `Erreur de transfert. Réessayer.` at the
+Eiffel Tower (48.8584, 2.2945), even with a successful HTTP 200 response.
+
+All turf IDs on the wire now add the fixed bias 1,000,000 to BOTH signed storage
+coordinates. Echo those positive IDs unchanged in `turf`, `turf/id` for homeboy
+moves, and `setturfprice/xpos,ypos`. The server subtracts the bias before proximity,
+ownership and database operations. This is not applied to `getmapview/xpos,ypos`,
+which remain GPS decimal degrees. The map image renderer also subtracts the bias
+before using its own grid. Do not shift the database or move its world origin.
+
+Existing SQLite territories, ownership and balances are retained without schema
+migration. Restart the service/container and refresh/re-enter Turf Wars so clients
+obtain current IDs. Do not reuse old cached signed IDs. Nonpositive incoming IDs
+are rejected; signed requests are not guessed as another location.
+
+Validation: full supplied game enters Turf Wars via Fake GPS Paris and reaches
+the interactive map after this change. Server regression coverage includes all
+commands, positive/unique global map IDs, echoed-ID purchase/price changes,
+restart persistence and unchanged signed database coordinates. The local game
+run uses a diagnostic loopback transport, not native Windows/Android networking.
