@@ -170,7 +170,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(decode_request(encode_request(xml)).tag,'getuserinfo')
         for data in ['<c>bad!</c>','<!DOCTYPE x><c>AA==</c>','<getuserinfo/>','<c>AA==</c>']:
             with self.assertRaises(ValueError):decode_request(data)
-    def test_first_login_requests_player_name_without_issuing_real_money(self):
+    def test_first_login_requests_name_and_applies_configured_starting_floor(self):
         terminal='Fresh'
         self.s.handle('getgamevars',encode_request(f'<getgamevars><terminalhardwareid>{terminal}</terminalhardwareid></getgamevars>'.encode()))
         with self.assertRaises(GameError) as failure:
@@ -179,7 +179,7 @@ class ServiceTests(unittest.TestCase):
         self.s.handle('setuserinfo',encode_request(f'<user><terminalhardwareid>{terminal}</terminalhardwareid><colorsname>New player</colorsname><money>43210</money></user>'.encode()))
         result=self.s.handle('getuserinfo',encode_request(f'<getuserinfo><terminalhardwareid>{terminal}</terminalhardwareid></getuserinfo>'.encode()))
         self.assertEqual(result.findtext('colorsname'),'New player')
-        self.assertEqual(result.findtext('money'),'43210')
+        self.assertEqual(int(result.findtext('money')),max(43210,self.rules.starting_money))
 
     def test_login_after_server_restart_preserves_registered_profile(self):
         self.crew('A','Persistent crew',0,0)

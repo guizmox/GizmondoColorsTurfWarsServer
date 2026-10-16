@@ -39,7 +39,7 @@ WEAPONS = 'smith american_180 striker spectre magnum m14 ak47 sawed_shotgun itha
 
 @dataclass
 class Rules:
-    starting_money:int=30000
+    starting_money:int=75000
     turf_price:int=30000
     homeboy_prices:tuple=(2000,5000,7000)
     homeboy_limits:tuple=(10,10,10)
@@ -313,6 +313,13 @@ class Service:
             name=text(r,'colorsname',maxlen=64).strip()
             if not name:raise GameError('Empty user name')
             money=number(r,'money',u['money']) if self.rules.sync_single_player_money else u['money']
+            # Registration is the only moment the server grants the configured
+            # minimum. Return that authoritative balance in the same response,
+            # so a first client declaration of 525 cannot erase the welcome grant.
+            # Do not apply a recurring floor: purchases and later syncs retain
+            # their ordinary protocol semantics for existing accounts.
+            if not u['registered']:
+                money=max(money,self.rules.starting_money)
             # Membership is server-controlled; the client's gangid is informational.
             db.execute('UPDATE users SET name=?,money=?,registered=1,stamp=stamp+1 WHERE terminal=?',(name,money,u['terminal']))
             return self.bundle(db,c,u)

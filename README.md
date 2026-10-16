@@ -104,3 +104,59 @@ les coordonnées nulles ou négatives après avoir affiché le GIF. Les degrés 
 la grille, les cartes et les clés SQLite ne changent pas. Conserver la base et
 ses volumes, redéployer/redémarrer le serveur, puis rouvrir Turf Wars pour
 rafraîchir les IDs. Voir PROTOCOL.md pour le contrat et la validation.
+
+
+## Separate solo and Turf Wars money (companion PocketHLE update)
+
+`starting_money` defaults to 75000. On the first `setuserinfo` registration, the
+server uses max(starting_money, incoming money) when solo synchronization is on.
+With synchronization off it uses starting_money. Existing accounts retain their
+balance: this is not a reconnect bonus or automatic refill. Turf price remains
+30000. The normal protocol for registered accounts still accepts absolute online
+balances; it must not guess solo deltas from those packets.
+
+Install the companion PocketHLE wallet compatibility patch too: the stock game
+copies server funds into solo money. The patched client retains solo money,
+transfers positive subsequent solo gains once during normal successful sync,
+and does not subtract solo spending from the online wallet. Unlock only changes
+the menu flag; it never sends money or contacts the server. Repeated Unlock
+clicks cannot refill an account. Previously granted local funds are preserved;
+restore an earlier save backup explicitly if needed.
+
+The legacy protocol does not authenticate offline earnings or provide operation
+IDs for exactly-once recovery after network failures. No client secret or new
+credit endpoint is introduced.
+
+### Existing VPS deployment
+
+Back up `/data/colors.sqlite3` with the existing backup helper before deployment.
+Keep the existing compose.yaml, port binding and `colors-turf-wars-data` volume.
+If custom rules explicitly specify starting_money=30000, change that setting to
+75000 while preserving all other rules. The example file is baked into the image;
+editing host files requires an image rebuild unless your rules are mounted.
+From the deployment directory:
+
+```sh
+sudo docker compose -f compose.yaml exec -T colors python /app/backup_database.py /data/colors.sqlite3 /data/before-wallet-update.sqlite3
+sudo docker compose -f compose.yaml cp colors:/data/before-wallet-update.sqlite3 ./before-wallet-update.sqlite3
+sudo docker compose -f compose.yaml up -d --build colors
+sudo docker compose -f compose.yaml ps
+sudo docker compose -f compose.yaml logs --tail=60 colors
+```
+
+This update does not reset existing accounts to 75000. Any deliberate existing
+account adjustment is a separate administrative action.
+
+### Native retail validation
+
+`tools/verify_separate_wallets.py EXE --patch-dump DUMP --save-zip SAVEZIP`
+requires pefile and Unicorn. DUMP comes from the companion Rust ignored fixture
+test (`POCKETHLE_COLORS_EXE`, `POCKETHLE_COLORS_PATCH_DUMP`). Original ARM request
+builders, response parser, encrypted ISV reader/writer and wallet arithmetic run
+against a real local HTTP/SQLite server. Only host/CRT/config/UI boundaries are
+adapted. No game binary or user save is distributed with this patch.
+
+Verified cycle: solo525/online75000 -> buy territory solo525/online45000 -> solo
++1000 gives solo1525/online46000 -> reconnect without extra funds. Also verified
+solo spending, forced refresh, integer saturation and preservation of supplied
+save/progression. This isolated fixture does not replace device gameplay tests.
